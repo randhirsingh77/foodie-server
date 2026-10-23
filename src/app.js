@@ -1,7 +1,11 @@
 const express = require("express");
 const cors = require("cors");
 const requestId = require("./middleware/requestId");
+const { identify } = require("./middleware/identify");
 const orderRoutes = require("./routes/orderRoutes");
+const profileRoutes = require("./routes/profileRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const menuRoutes = require("./routes/menuRoutes");
 
 // Builds the Express app: middleware in order (request ID → security
 // headers → CORS → JSON body → routes → 404 → error handler last).
@@ -20,7 +24,11 @@ function buildApp() {
   app.use(express.json({ limit: "50kb" }));
 
   app.get("/health", (req, res) => res.json({ ok: true, service: "foodie-server" }));
+  app.use(identify); // resolves x-user-sub -> req.profile for the API below
   app.use("/api/v1/orders", orderRoutes);
+  app.use("/api/v1/profile", profileRoutes);
+  app.use("/api/v1/admin", adminRoutes);
+  app.use("/api/v1/menu-state", menuRoutes);
 
   app.use((req, res) => res.status(404).json({ error: { code: "not_found", message: "Route not found." } }));
 
