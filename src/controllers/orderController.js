@@ -13,6 +13,12 @@ async function createOrder(req, res) {
   if (existing) return res.status(200).json({ data: existing, replayed: true });
 
   const { lines, amounts } = priceOrder(b.items, b.promoCode);
+  const { pointForOrder } = require("../utils/geo");
+  const dp = b.deliveryPoint;
+  const deliveryPoint =
+    dp && typeof dp.lat === "number" && typeof dp.lng === "number"
+      ? { lat: dp.lat, lng: dp.lng }
+      : pointForOrder(b.orderId);
   const order = await Order.create({
     orderId: b.orderId,
     customer: {
@@ -26,7 +32,9 @@ async function createOrder(req, res) {
     address: b.address.trim(),
     note: (b.note || "").trim(),
     paymentMethod: b.paymentMethod || "Cash on Delivery",
-    userSub: b.userSub || "",
+    userSub: (req.profile && req.profile.sub) || b.userSub || "",
+    deliveryPoint,
+    timeline: [{ status: "received", at: new Date() }],
   });
   return res.status(201).json({ data: order });
 }
@@ -57,7 +65,7 @@ async function getOrder(req, res) {
 
 // PATCH /api/v1/orders/:orderId/status (admin) — body: { status }
 async function updateStatus(req, res) {
-  const allowed = ["received", "preparing", "on_the_way", "delivered", "cancelled"];
+  const allowed = ["received", "preparing", "packing", "on_the_way", "delivered", "cancelled"];
   const { status } = req.body || {};
   if (!allowed.includes(status)) {
     return res.status(400).json({

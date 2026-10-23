@@ -41,13 +41,35 @@ const orderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["received", "preparing", "on_the_way", "delivered", "cancelled"],
+      enum: ["received", "preparing", "packing", "on_the_way", "delivered", "cancelled"],
       default: "received",
       index: true,
     },
 
     // Auth0 user id ("sub") when the order was placed while logged in.
-    userSub: { type: String, default: "" },
+    userSub: { type: String, default: "", index: true },
+
+    // Delivery driver (a UserProfile sub with role "driver"), once assigned.
+    driverSub: { type: String, default: "", index: true },
+
+    // Where the food is going (for live tracking) and the status timeline.
+    deliveryPoint: {
+      lat: { type: Number },
+      lng: { type: Number },
+    },
+    timeline: [
+      {
+        status: { type: String },
+        at: { type: Date, default: Date.now },
+      },
+    ],
+
+    // Customer's rating of the delivery driver, after delivery.
+    rating: {
+      stars: { type: Number, min: 1, max: 5 },
+      comment: { type: String, default: "" },
+      ratedAt: { type: Date },
+    },
   },
   { timestamps: true }
 );
