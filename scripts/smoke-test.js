@@ -166,6 +166,48 @@ function check(name, cond, extra = "") {
   const an = await (await get("/api/v1/admin/analytics", as("owner1"))).json();
   check("analytics totals", an.data?.totals?.orders >= 3 && an.data?.totals?.revenue > 1000 && Array.isArray(an.data?.daily) && an.data.daily.length === 14, JSON.stringify(an.data?.totals));
 
+  // ---- Own auth system ----
+  process.env.JWT_SECRET = "smoke-test-secret";
+
+  // 25. Register creates an account + returns a token
+  const reg = await post("/api/v1/auth/register", { name: "New User", email: "new@user.dev", phone: "9812345678", password: "password123" });
+  const regj = await reg.json();
+  check("register 201 + token + no hash leaked", reg.status === 201 && typeof regj.data?.token === "string" && regj.data?.profile?.passwordHash === undefined, `got ${reg.status}`);
+
+  // 26. Duplicate email -> 409
+  const dup = await post("/api/v1/auth/register", { name: "Copy", email: "new@user.dev", phone: "9812345679", password: "password123" });
+  check("duplicate register -> 409", dup.status === 409, `got ${dup.status}`);
+
+  // 27. Short password -> 400
+  const weak = await post("/api/v1/auth/register", { name: "Weak", email: "weak@user.dev", phone: "9812345680", password: "short" });
+  check("weak password -> 400", weak.status === 400, `got ${weak.status}`);
+
+  // 28. Login works by EMAIL and by PHONE; wrong password -> 401
+  const li1 = await post("/api/v1/auth/login", { id: "new@user.dev", password: "password123" });
+  const li2 = await post("/api/v1/auth/login", { id: "9812345678", password: "password123" });
+  const li3 = await post("/api/v1/auth/login", { id: "new@user.dev", password: "wrong-password" });
+  check("login by email + by phone, wrong pw 401", li1.status === 200 && li2.status === 200 && li3.status === 401, `${li1.status}/${li2.status}/${li3.status}`);
+
+  // 29. The JWT authenticates /profile (Bearer path in identify)
+  const token = (await li1.json()).data.token;
+  const meJwt = await get("/api/v1/profile", { Authorization: `Bearer ${token}` });
+  const meJwtJ = await meJwt.json();
+  check("JWT -> profile", meJwt.status === 200 && meJwtJ.data?.email === "new@user.dev", `got ${meJwt.status}`);
+  const badJwt = await get("/api/v1/profile", { Authorization: "Bearer not-a-token" });
+  check("bad JWT -> 401 on protected route", badJwt.status === 401, `got ${badJwt.status}`);
+
+  // 30. Google start without credentials -> 503 not configured
+  const g = await fetch(base + "/api/v1/auth/google");
+  check("google unconfigured -> 503", g.status === 503, `got ${g.status}`);
+
+  // 31. Change password with the JWT: wrong current -> 401, right -> 200,
+  //     and the old password stops working.
+  const cpBad = await post("/api/v1/auth/change-password", { currentPassword: "nope-nope", newPassword: "newpassword1" }, { Authorization: `Bearer ${token}` });
+  const cpOk = await post("/api/v1/auth/change-password", { currentPassword: "password123", newPassword: "newpassword1" }, { Authorization: `Bearer ${token}` });
+  const liOld = await post("/api/v1/auth/login", { id: "new@user.dev", password: "password123" });
+  const liNew = await post("/api/v1/auth/login", { id: "new@user.dev", password: "newpassword1" });
+  check("change-password flow", cpBad.status === 401 && cpOk.status === 200 && liOld.status === 401 && liNew.status === 200, `${cpBad.status}/${cpOk.status}/${liOld.status}/${liNew.status}`);
+
   server.close();
   await mongod.stop();
   console.log(`\n${passed} passed, ${failed} failed`);

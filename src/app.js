@@ -6,6 +6,7 @@ const orderRoutes = require("./routes/orderRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const menuRoutes = require("./routes/menuRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 // Builds the Express app: middleware in order (request ID → security
 // headers → CORS → JSON body → routes → 404 → error handler last).
@@ -24,7 +25,8 @@ function buildApp() {
   app.use(express.json({ limit: "50kb" }));
 
   app.get("/health", (req, res) => res.json({ ok: true, service: "foodie-server" }));
-  app.use(identify); // resolves x-user-sub -> req.profile for the API below
+  app.use("/api/v1/auth", authRoutes); // register/login/Google — no identity needed
+  app.use(identify); // resolves JWT or x-user-sub -> req.profile for the API below
   app.use("/api/v1/orders", orderRoutes);
   app.use("/api/v1/profile", profileRoutes);
   app.use("/api/v1/admin", adminRoutes);

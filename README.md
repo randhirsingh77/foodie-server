@@ -80,6 +80,20 @@ header — production should verify the Auth0 JWT; see identify.js.)
 | `GET /api/v1/admin/analytics` | admin/manager | Revenue, orders, AOV, 14-day series, top dishes, status counts |
 | `GET /api/v1/menu-state` · `PATCH /api/v1/menu-state/:name` | public / kitchen | Dish availability (out-of-stock toggles) |
 
+## Own auth system
+
+| Method & path | What |
+|---|---|
+| `POST /api/v1/auth/register` | `{ name, email, phone, password }` → creates the account (bcrypt-hashed password), returns `{ token, profile }` |
+| `POST /api/v1/auth/login` | `{ id, password }` — `id` is the email **or** the phone number → `{ token, profile }` |
+| `POST /api/v1/auth/forgot` | Password-reset request (generic answer; emails a link in a real deployment) |
+| `POST /api/v1/auth/change-password` | With the JWT: `{ currentPassword, newPassword }` |
+| `GET /api/v1/auth/google` → `GET /api/v1/auth/google/callback` | Continue with Google (OAuth2). Needs `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in the environment; returns the browser to `SITE_URL` with the JWT |
+
+Clients send the token as `Authorization: Bearer <JWT>`; it is verified on
+every request (`JWT_SECRET`). The demo `x-user-sub` header path also exists
+for simple integrations — the JWT is the real one.
+
 Demo data: `node scripts/seed-demo.js` adds 3 drivers, a manager and 20
 orders across statuses and days so the dashboards have something to show.
 

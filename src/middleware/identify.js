@@ -1,16 +1,29 @@
+const jwt = require("jsonwebtoken");
 const UserProfile = require("../models/UserProfile");
 
-// Identifies the caller from the x-user-sub header (the Auth0 subject the
-// website sends after login) and loads — or lazily creates — their profile.
-//
-// NOTE (demo auth): this trusts the header, which is fine for the demo /
-// portfolio deployment. A production deployment should instead verify the
-// Auth0 access-token JWT (JWKS) on every request. The owner admin key
-// (x-admin-key) is also honoured and treated as role "admin".
+// Identifies the caller, in order of trust:
+//  1. Authorization: Bearer <JWT> issued by our own auth (register/login/
+//     Google) — verified against JWT_SECRET, the profile loads by sub.
+//  2. The x-user-sub header (demo/simple integrations; documented as
+//     demo-grade — production should rely on the JWT path).
+// The owner admin key (x-admin-key) is also honoured as role "admin".
 async function identify(req, res, next) {
   try {
-    const sub = req.get("x-user-sub") || "";
     req.isAdminKey = Boolean(process.env.ADMIN_KEY) && req.get("x-admin-key") === process.env.ADMIN_KEY;
+
+    const auth = req.get("authorization") || "";
+    if (auth.startsWith("Bearer ") && process.env.JWT_SECRET) {
+      try {
+        const payload = jwt.verify(auth.slice(7), process.env.JWT_SECRET);
+        req.profile = (await UserProfile.findOne({ sub: payload.sub })) || null;
+        return next();
+      } catch {
+        req.profile = null;
+        return next(); // invalid token = anonymous, protected routes will 401
+      }
+    }
+
+    const sub = req.get("x-user-sub") || "";
     if (!sub) {
       req.profile = null;
       return next();

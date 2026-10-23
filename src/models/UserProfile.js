@@ -20,6 +20,9 @@ const userProfileSchema = new mongoose.Schema(
     name: { type: String, default: "", trim: true },
     phone: { type: String, default: "", trim: true },
     picture: { type: String, default: "" },
+    // Own auth system: bcrypt hash (never selected by default) + provider.
+    passwordHash: { type: String, select: false },
+    authProvider: { type: String, enum: ["local", "google"], default: "local" },
     role: {
       type: String,
       enum: ["customer", "admin", "manager", "driver"],
