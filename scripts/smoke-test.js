@@ -85,6 +85,87 @@ function check(name, cond, extra = "") {
   const j9 = await r9.json();
   check("unknown route -> 404", r9.status === 404 && j9.error?.code === "not_found");
 
+  // ---- Platform: profiles, roles, kitchen flow, driver, tracking, rating ----
+  const as = (sub, extra = {}) => ({ "x-user-sub": sub, "x-user-email": `${sub}@test.dev`, "x-user-name": sub, ...extra });
+
+  // 11. Profile is created lazily from the identity header
+  const p1 = await (await get("/api/v1/profile", as("customer1"))).json();
+  check("profile lazy-create, role customer", p1.data?.sub === "customer1" && p1.data?.role === "customer");
+
+  // 12. No identity -> 401 on profile
+  const p2 = await get("/api/v1/profile");
+  check("profile without identity -> 401", p2.status === 401, `got ${p2.status}`);
+
+  // 13. Add + keep an address
+  const p3 = await post("/api/v1/profile/addresses", { label: "Home", line: "12 Test Marg, New Delhi", pincode: "110001" }, as("customer1"));
+  const j3p = await p3.json();
+  check("address saved", p3.status === 201 && j3p.data?.addresses?.length === 1, JSON.stringify(j3p.data?.addresses));
+
+  // 14. Demo role switching (kitchen + driver)
+  await post("/api/v1/profile/demo-role", { role: "manager" }, as("chef1"));
+  await post("/api/v1/profile/demo-role", { role: "driver" }, as("driver1"));
+  const drv = await (await get("/api/v1/profile", as("driver1"))).json();
+  check("demo-role driver sticks", drv.data?.role === "driver");
+
+  // 15. Customer order is tracked end-to-end: place as customer1
+  const ord = {
+    orderId: "FD-FLOW01",
+    customer: { name: "Customer One", email: "customer1@test.dev", phone: "9876543210" },
+    items: [{ name: "Biryani", qty: 2 }],
+    address: "12 Test Marg, New Delhi",
+    paymentMethod: "UPI",
+  };
+  const oc = await post("/api/v1/orders", ord, as("customer1"));
+  const ocj = await oc.json();
+  check("flow order created with userSub + timeline", oc.status === 201 && ocj.data?.userSub === "customer1" && ocj.data?.timeline?.length === 1);
+
+  // 16. Customer sees it in /mine; chef sees it in the queue
+  const mine = await (await get("/api/v1/orders/mine", as("customer1"))).json();
+  check("orders/mine contains the order", mine.data?.some((o) => o.orderId === "FD-FLOW01"));
+  const q1 = await (await get("/api/v1/orders/queue", as("chef1"))).json();
+  check("kitchen queue contains the order", q1.data?.some((o) => o.orderId === "FD-FLOW01"));
+
+  // 17. Kitchen advances received -> preparing -> packing
+  await post("/api/v1/orders/FD-FLOW01/advance", {}, as("chef1"));
+  const adv2 = await (await post("/api/v1/orders/FD-FLOW01/advance", {}, as("chef1"))).json();
+  check("kitchen advanced to packing", adv2.data?.status === "packing", adv2.data?.status);
+
+  // 18. Customer cannot do kitchen steps -> 403
+  const advX = await post("/api/v1/orders/FD-FLOW01/advance", {}, as("customer1"));
+  check("customer advance -> 403", advX.status === 403, `got ${advX.status}`);
+
+  // 19. Driver accepts the packing order, then delivers it
+  const acc = await post("/api/v1/orders/FD-FLOW01/accept", {}, as("driver1"));
+  check("driver accepted", acc.status === 200, `got ${acc.status}`);
+  await post("/api/v1/orders/FD-FLOW01/advance", {}, as("driver1")); // -> on_the_way
+  const del = await (await post("/api/v1/orders/FD-FLOW01/advance", {}, as("driver1"))).json();
+  check("driver delivered", del.data?.status === "delivered", del.data?.status);
+
+  // 20. Driver got paid the demo delivery fee
+  const drv2 = await (await get("/api/v1/profile", as("driver1"))).json();
+  check("driver earnings +40, deliveries 1", drv2.data?.driver?.earnings === 40 && drv2.data?.driver?.deliveries === 1, JSON.stringify(drv2.data?.driver));
+
+  // 21. Customer rates the driver 5 stars -> driver rating updates
+  const rt = await post("/api/v1/orders/FD-FLOW01/rate", { stars: 5, comment: "Fast!" }, as("customer1"));
+  check("rating accepted", rt.status === 200, `got ${rt.status}`);
+  const drv3 = await (await get("/api/v1/profile", as("driver1"))).json();
+  check("driver ratingCount 1, avg 5", drv3.data?.driver?.ratingCount === 1 && drv3.data?.driver?.ratingAvg === 5);
+
+  // 22. Tracking works and names the driver
+  const tr = await (await get("/api/v1/orders/FD-FLOW01/track")).json();
+  check("track: delivered, driver named, eta 0", tr.data?.status === "delivered" && tr.data?.driver?.name === "driver1" && tr.data?.etaMinutes === 0, JSON.stringify(tr.data?.driver));
+
+  // 23. Menu state: kitchen marks Pasta out of stock; public list shows it
+  const ms = await fetch(base + "/api/v1/menu-state/Pasta", { method: "PATCH", headers: { "Content-Type": "application/json", ...as("chef1") }, body: JSON.stringify({ available: false }) });
+  check("menu-state patch by manager", ms.status === 200, `got ${ms.status}`);
+  const msl = await (await get("/api/v1/menu-state")).json();
+  check("menu-state list shows Pasta unavailable", msl.data?.some((r) => r.name === "Pasta" && r.available === false));
+
+  // 24. Analytics for a manager: revenue includes all test orders (> 650+250+360)
+  await post("/api/v1/profile/demo-role", { role: "admin" }, as("owner1"));
+  const an = await (await get("/api/v1/admin/analytics", as("owner1"))).json();
+  check("analytics totals", an.data?.totals?.orders >= 3 && an.data?.totals?.revenue > 1000 && Array.isArray(an.data?.daily) && an.data.daily.length === 14, JSON.stringify(an.data?.totals));
+
   server.close();
   await mongod.stop();
   console.log(`\n${passed} passed, ${failed} failed`);

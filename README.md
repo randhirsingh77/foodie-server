@@ -54,3 +54,32 @@ with an honest HTTP status (400 invalid input, 401 missing admin key, 404 not fo
 
 - Promo `FOODIE50`: 50% off, max ₹100, on subtotal ≥ ₹299.
 - Delivery ₹30, free when subtotal − discount ≥ ₹499.
+
+## Platform API (profiles, roles, kitchen, drivers, tracking)
+
+Callers identify with headers: `x-user-sub` (the Auth0 subject),
+`x-user-email`, `x-user-name`. A profile is created lazily on first call.
+Roles: `customer` (default), `admin` (owner), `manager` (kitchen), `driver`.
+The owner `x-admin-key` also counts as admin. (Demo-grade trust in the
+header — production should verify the Auth0 JWT; see identify.js.)
+
+| Method & path | Who | What |
+|---|---|---|
+| `GET /api/v1/profile` | user | Own profile (name, phone, addresses, role, driver stats) |
+| `PUT /api/v1/profile` | user | Update name/phone; drivers: vehicle, photo, availability |
+| `POST /api/v1/profile/addresses` · `DELETE /api/v1/profile/addresses/:id` | user | Saved addresses |
+| `GET /api/v1/profile/by-role?role=driver` | user | Directory (kitchen assigns drivers from this) |
+| `PUT /api/v1/profile/role` | admin | Set another user's role by email/sub |
+| `POST /api/v1/profile/demo-role` | user | **Demo only:** switch your own role to try every view with one login |
+| `GET /api/v1/orders/mine` | user | My orders |
+| `GET /api/v1/orders/queue` | manager/admin/driver | Working queue (drivers see ready-for-pickup + their own) |
+| `POST /api/v1/orders/:id/accept` | driver | Take an unassigned packing order |
+| `POST /api/v1/orders/:id/advance` | kitchen, then driver | received → preparing → packing → on_the_way → delivered; delivery pays the driver ₹40 (demo) |
+| `POST /api/v1/orders/:id/rate` | customer | Rate the driver 1–5 stars after delivery |
+| `GET /api/v1/orders/:id/track` | public | Live tracking: rider position (interpolated), ETA, driver card |
+| `GET /api/v1/admin/analytics` | admin/manager | Revenue, orders, AOV, 14-day series, top dishes, status counts |
+| `GET /api/v1/menu-state` · `PATCH /api/v1/menu-state/:name` | public / kitchen | Dish availability (out-of-stock toggles) |
+
+Demo data: `node scripts/seed-demo.js` adds 3 drivers, a manager and 20
+orders across statuses and days so the dashboards have something to show.
+
