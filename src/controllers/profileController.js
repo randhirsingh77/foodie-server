@@ -82,18 +82,4 @@ async function setRole(req, res) {
   res.json({ data: user });
 }
 
-// POST /profile/demo-role — DEMO convenience: switch your OWN role so the
-// whole platform (owner / kitchen / driver views) can be tried with one
-// login. Remove or restrict this in a real production deployment.
-async function demoRole(req, res) {
-  const { role } = req.body || {};
-  if (!["customer", "admin", "manager", "driver"].includes(role)) {
-    return res.status(400).json({ error: { code: "invalid_input", message: "Unknown role." } });
-  }
-  req.profile.role = role;
-  if (role === "driver" && !req.profile.driver.vehicle) req.profile.driver.vehicle = "Two-wheeler";
-  await req.profile.save();
-  res.json({ data: req.profile });
-}
-
-module.exports = { getMe, updateMe, addAddress, deleteAddress, byRole, setRole, demoRole };
+module.exports = { getMe, updateMe, addAddress, deleteAddress, byRole, setRole };

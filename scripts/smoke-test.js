@@ -101,11 +101,21 @@ function check(name, cond, extra = "") {
   const j3p = await p3.json();
   check("address saved", p3.status === 201 && j3p.data?.addresses?.length === 1, JSON.stringify(j3p.data?.addresses));
 
-  // 14. Demo role switching (kitchen + driver)
-  await post("/api/v1/profile/demo-role", { role: "manager" }, as("chef1"));
-  await post("/api/v1/profile/demo-role", { role: "driver" }, as("driver1"));
+  // 14. Roles are assigned directly in the DB for this test (the demo
+  // self-promotion endpoint was removed when the site went public)
+  const UserProfile = require("../src/models/UserProfile");
+  const assignRole = async (sub, role) => {
+    await get("/api/v1/profile", as(sub)); // lazy-create the profile first
+    await UserProfile.updateOne({ sub }, { $set: { role } });
+  };
+  await assignRole("chef1", "manager");
+  await assignRole("driver1", "driver");
   const drv = await (await get("/api/v1/profile", as("driver1"))).json();
-  check("demo-role driver sticks", drv.data?.role === "driver");
+  check("assigned driver role sticks", drv.data?.role === "driver");
+
+  // 14b. The old demo-role endpoint must be gone (404)
+  const gone = await post("/api/v1/profile/demo-role", { role: "admin" }, as("customer1"));
+  check("demo-role endpoint removed -> 404", gone.status === 404, `got ${gone.status}`);
 
   // 15. Customer order is tracked end-to-end: place as customer1
   const ord = {
@@ -162,7 +172,7 @@ function check(name, cond, extra = "") {
   check("menu-state list shows Pasta unavailable", msl.data?.some((r) => r.name === "Pasta" && r.available === false));
 
   // 24. Analytics for a manager: revenue includes all test orders (> 650+250+360)
-  await post("/api/v1/profile/demo-role", { role: "admin" }, as("owner1"));
+  await assignRole("owner1", "admin");
   const an = await (await get("/api/v1/admin/analytics", as("owner1"))).json();
   check("analytics totals", an.data?.totals?.orders >= 3 && an.data?.totals?.revenue > 1000 && Array.isArray(an.data?.daily) && an.data.daily.length === 14, JSON.stringify(an.data?.totals));
 
