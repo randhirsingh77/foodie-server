@@ -1,8 +1,16 @@
-# Foodie Server — orders backend
+# Foodie Server — platform backend
 
-The backend for the [Foodie website](https://randhirsingh77.github.io/Food-Delivery/).
-It saves the orders customers place on the site into MongoDB. Users are **not**
-stored here — login lives in Auth0; this service only handles orders.
+The backend for the [Foodie website](https://github.com/randhirsingh77/Food-Delivery)
+(live: https://foodie-tvna.onrender.com). It runs the whole platform:
+its **own auth system** (register/login with email or phone + password,
+bcrypt, JWT; Continue with Google), user profiles with roles
+(customer / owner / kitchen manager / driver) and saved addresses, the
+order flow (kitchen queue → packing → driver pickup → live tracking →
+delivery with driver pay and customer ratings), dish availability, and
+owner analytics — all stored in MongoDB.
+
+**Live API:** https://foodie-server-kwl6.onrender.com — try
+`GET /health` → `{"ok":true}`.
 
 ## Structure
 
