@@ -64,6 +64,19 @@ const orderSchema = new mongoose.Schema(
       },
     ],
 
+    // Set when this order came from a group cart: the cart it came from
+    // and the final per-person split in integer PAISE (the rest of the
+    // order keeps the whole-rupee convention; splits are stored in paise
+    // explicitly so shares always add up exactly).
+    groupCartId: { type: String, default: "" },
+    splits: [
+      {
+        sub: { type: String, default: "" },
+        name: { type: String, default: "" },
+        amountPaise: { type: Number, default: 0 },
+      },
+    ],
+
     // Customer's rating of the delivery driver, after delivery.
     rating: {
       stars: { type: Number, min: 1, max: 5 },

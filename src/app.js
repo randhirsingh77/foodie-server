@@ -7,6 +7,7 @@ const profileRoutes = require("./routes/profileRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const menuRoutes = require("./routes/menuRoutes");
 const authRoutes = require("./routes/authRoutes");
+const groupCartRoutes = require("./routes/groupCartRoutes");
 
 // Builds the Express app: middleware in order (request ID → security
 // headers → CORS → JSON body → routes → 404 → error handler last).
@@ -31,6 +32,7 @@ function buildApp() {
   app.use("/api/v1/profile", profileRoutes);
   app.use("/api/v1/admin", adminRoutes);
   app.use("/api/v1/menu-state", menuRoutes);
+  app.use("/api/v1/group-carts", groupCartRoutes);
 
   app.use((req, res) => res.status(404).json({ error: { code: "not_found", message: "Route not found." } }));
 

@@ -244,6 +244,57 @@ function check(name, cond, extra = "") {
   check("track: queueAhead + avgPrepMinutes are numbers", typeof trk.data?.queueAhead === "number" && typeof trk.data?.avgPrepMinutes === "number");
   check("track: delivered order keeps etaMinutes 0 and no queue range", tr.data?.etaMinutes === 0);
 
+  // ---- Group carts + per-person split ----
+  const bearer = (t) => ({ Authorization: `Bearer ${t}` });
+  const regUser = async (name, email, phone) => {
+    const r = await post("/api/v1/auth/register", { name, email, phone, password: "password123" });
+    return (await r.json()).data;
+  };
+  const host = await regUser("Group Host", "host@group.dev", "9812345701");
+  const guest = await regUser("Group Guest", "guest@group.dev", "9812345702");
+  check("group test users registered", Boolean(host?.token && guest?.token));
+
+  // 35. Host opens a cart; a non-participant cannot view it.
+  const gc = await post("/api/v1/group-carts", { hostUpiId: "host@okhdfc" }, bearer(host.token));
+  const gcj = await gc.json();
+  const code = gcj.data?.code;
+  check("group cart created with 6-char code", gc.status === 201 && typeof code === "string" && code.length === 6, `got ${gc.status} ${code}`);
+  const peek = await get(`/api/v1/group-carts/${code}`, bearer(guest.token));
+  check("non-participant view -> 403", peek.status === 403, `got ${peek.status}`);
+
+  // 36. Guest joins, both add their own dishes; the preview split is in
+  //     paise and sums to the order total (300 items + 30 delivery = 330).
+  const join = await post(`/api/v1/group-carts/${code}/join`, {}, bearer(guest.token));
+  check("guest joined (2 participants)", join.status === 200 && (await join.json()).data?.participants?.length === 2);
+  await post(`/api/v1/group-carts/${code}/items`, { name: "Biryani", qty: 1 }, bearer(guest.token));
+  const added = await post(`/api/v1/group-carts/${code}/items`, { name: "Pizza", qty: 1 }, bearer(host.token));
+  const addedJ = await added.json();
+  const splitSum = (addedJ.data?.splits || []).reduce((s, x) => s + x.amountPaise, 0);
+  const guestShare = (addedJ.data?.splits || []).find((x) => x.sub === guest.profile.sub)?.amountPaise;
+  check("split preview: paise, exact sum 33000, guest share 19800", splitSum === 33000 && guestShare === 19800, `sum=${splitSum} guest=${guestShare}`);
+
+  // 37. Only the host locks; after locking, adds are refused.
+  const guestLock = await post(`/api/v1/group-carts/${code}/lock`, {}, bearer(guest.token));
+  check("guest lock -> 403", guestLock.status === 403, `got ${guestLock.status}`);
+  const lock = await post(`/api/v1/group-carts/${code}/lock`, {}, bearer(host.token));
+  check("host lock -> locked", lock.status === 200 && (await lock.json()).data?.status === "locked");
+  const lateAdd = await post(`/api/v1/group-carts/${code}/items`, { name: "Juice", qty: 1 }, bearer(guest.token));
+  check("add after lock -> 409", lateAdd.status === 409, `got ${lateAdd.status}`);
+
+  // 38. Only the host checks out; the order carries the final split.
+  const guestCo = await post(`/api/v1/group-carts/${code}/checkout`, { address: "5 Group Street, New Delhi" }, bearer(guest.token));
+  check("guest checkout -> 403", guestCo.status === 403, `got ${guestCo.status}`);
+  const co = await post(`/api/v1/group-carts/${code}/checkout`, { address: "5 Group Street, New Delhi", paymentMethod: "UPI" }, bearer(host.token));
+  const coJ = await co.json();
+  const finalSum = (coJ.data?.order?.splits || []).reduce((s, x) => s + x.amountPaise, 0);
+  check("host checkout -> order 330 with exact paise splits", co.status === 201 && coJ.data?.order?.amounts?.total === 330 && finalSum === 33000 && Boolean(coJ.data?.order?.groupCartId), `got ${co.status} sum=${finalSum}`);
+  check("cart is ordered with the order id", coJ.data?.cart?.status === "ordered" && coJ.data?.cart?.orderId === coJ.data?.order?.orderId);
+
+  // 39. Join attempts are rate-limited (code guessing stays expensive).
+  let lastJoin = 0;
+  for (let i = 0; i < 11; i++) lastJoin = (await post("/api/v1/group-carts/ZZZZZZ/join", {}, bearer(guest.token))).status;
+  check("11th join attempt on one code -> 429", lastJoin === 429, `got ${lastJoin}`);
+
   server.close();
   await mongod.stop();
   console.log(`\n${passed} passed, ${failed} failed`);
