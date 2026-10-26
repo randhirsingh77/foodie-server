@@ -1,7 +1,10 @@
 const Order = require("../models/Order");
 const UserProfile = require("../models/UserProfile");
 const DishState = require("../models/DishState");
+const DishMeta = require("../models/DishMeta");
 const { RESTAURANT, lerp } = require("../utils/geo");
+const { MENU_PRICES } = require("../utils/pricing");
+const { DISH_META, isHighProtein } = require("../utils/dishMeta");
 
 const DRIVER_DELIVERY_PAY = 40; // ₹ the driver earns per completed delivery (demo)
 const RIDE_MINUTES = 20; // assumed ride time once "on_the_way"
@@ -201,21 +204,83 @@ async function analytics(req, res) {
   });
 }
 
-// GET /menu-state — public: which dishes are unavailable right now.
-async function menuState(req, res) {
-  const rows = await DishState.find();
-  res.json({ data: rows.map((r) => ({ name: r.name, available: r.available })) });
+// Merges a dish's availability with its dietary/nutrition data: kitchen
+// overrides (DishMeta) win over the declared defaults (utils/dishMeta.js).
+function dishRow(name, stateRow, metaRow) {
+  const meta = metaRow
+    ? {
+        dietary: metaRow.dietary?.toObject ? metaRow.dietary.toObject() : metaRow.dietary,
+        allergens: metaRow.allergens || [],
+        nutritionPerServing: metaRow.nutritionPerServing?.toObject
+          ? metaRow.nutritionPerServing.toObject()
+          : metaRow.nutritionPerServing,
+      }
+    : DISH_META[name] || { dietary: { jain: false, sattvic: false, noOnionGarlic: false }, allergens: [], nutritionPerServing: null };
+  return {
+    name,
+    available: stateRow ? stateRow.available : true,
+    dietary: meta.dietary,
+    allergens: meta.allergens,
+    nutritionPerServing: meta.nutritionPerServing,
+    isHighProtein: isHighProtein(meta.nutritionPerServing),
+  };
 }
 
-// PATCH /menu-state/:name — kitchen toggles a dish in/out of stock.
+// GET /menu-state — public: every dish with its availability and its
+// dietary/nutrition data (kitchen-declared estimates).
+async function menuState(req, res) {
+  const [states, metas] = await Promise.all([DishState.find(), DishMeta.find()]);
+  const stateByName = new Map(states.map((r) => [r.name, r]));
+  const metaByName = new Map(metas.map((r) => [r.name, r]));
+  const names = new Set([...Object.keys(MENU_PRICES), ...stateByName.keys(), ...metaByName.keys()]);
+  res.json({ data: [...names].map((name) => dishRow(name, stateByName.get(name), metaByName.get(name))) });
+}
+
+// PATCH /menu-state/:name — kitchen toggles a dish in/out of stock and/or
+// updates its dietary flags, allergens and nutrition values.
 async function setMenuState(req, res) {
-  const available = Boolean(req.body?.available);
-  const row = await DishState.findOneAndUpdate(
-    { name: req.params.name },
-    { available },
-    { new: true, upsert: true }
-  );
-  res.json({ data: { name: row.name, available: row.available } });
+  const name = req.params.name;
+  const b = req.body || {};
+  let stateRow = await DishState.findOne({ name });
+  let metaRow = await DishMeta.findOne({ name });
+
+  if (typeof b.available === "boolean") {
+    stateRow = await DishState.findOneAndUpdate(
+      { name },
+      { available: b.available },
+      { new: true, upsert: true }
+    );
+  }
+
+  const hasMeta = b.dietary || b.allergens || b.nutritionPerServing;
+  if (hasMeta) {
+    const base = metaRow
+      ? { dietary: metaRow.dietary.toObject(), allergens: metaRow.allergens, nutritionPerServing: metaRow.nutritionPerServing.toObject() }
+      : DISH_META[name] || { dietary: {}, allergens: [], nutritionPerServing: {} };
+    const dietary = { ...base.dietary };
+    if (b.dietary) {
+      for (const k of ["jain", "sattvic", "noOnionGarlic"]) {
+        if (typeof b.dietary[k] === "boolean") dietary[k] = b.dietary[k];
+      }
+    }
+    const allergens = Array.isArray(b.allergens)
+      ? b.allergens.filter((a) => typeof a === "string").map((a) => a.trim().toLowerCase()).slice(0, 12)
+      : base.allergens;
+    const nutrition = { ...base.nutritionPerServing };
+    if (b.nutritionPerServing) {
+      for (const k of ["kcal", "proteinG", "carbsG", "fatG"]) {
+        const v = Number(b.nutritionPerServing[k]);
+        if (Number.isFinite(v) && v >= 0) nutrition[k] = v;
+      }
+    }
+    metaRow = await DishMeta.findOneAndUpdate(
+      { name },
+      { dietary, allergens, nutritionPerServing: nutrition },
+      { new: true, upsert: true }
+    );
+  }
+
+  res.json({ data: dishRow(name, stateRow, metaRow) });
 }
 
 module.exports = { myOrders, queue, acceptOrder, advanceStatus, rateOrder, trackOrder, analytics, menuState, setMenuState };

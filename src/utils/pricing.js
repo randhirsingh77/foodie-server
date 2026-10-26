@@ -16,6 +16,7 @@ const MENU_PRICES = {
   "Ice Cream": 10,
   "Spanchi": 60,
   "Sandwich": 25,
+  "Ghar Jaisa Thali": 130,
 };
 
 const DELIVERY_FEE = 30;

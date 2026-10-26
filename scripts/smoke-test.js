@@ -218,6 +218,24 @@ function check(name, cond, extra = "") {
   const liNew = await post("/api/v1/auth/login", { id: "new@user.dev", password: "newpassword1" });
   check("change-password flow", cpBad.status === 401 && cpOk.status === 200 && liOld.status === 401 && liNew.status === 200, `${cpBad.status}/${cpOk.status}/${liOld.status}/${liNew.status}`);
 
+  // ---- Dietary filters + nutrition data ----
+  // 32. Menu-state now carries dietary flags + nutrition for every dish,
+  //     including the new tiffin thali.
+  const menu = await (await get("/api/v1/menu-state")).json();
+  const row = (n) => menu.data?.find((r) => r.name === n);
+  check("menu-state lists all 13 dishes", menu.data?.length === 13, `got ${menu.data?.length}`);
+  check("thali: sattvic + no onion-garlic, not jain", row("Ghar Jaisa Thali")?.dietary?.sattvic === true && row("Ghar Jaisa Thali")?.dietary?.noOnionGarlic === true && row("Ghar Jaisa Thali")?.dietary?.jain === false);
+  check("thali nutrition declared (620 kcal, 19 g protein)", row("Ghar Jaisa Thali")?.nutritionPerServing?.kcal === 620 && row("Ghar Jaisa Thali")?.nutritionPerServing?.proteinG === 19);
+  check("jain is not no-onion-garlic: Chocolate Drink jain, Burger not", row("Chocolate Drink")?.dietary?.jain === true && row("Burger")?.dietary?.jain === false);
+  check("high-protein rule: Pasta + thali qualify, Burger does not", row("Pasta")?.isHighProtein === true && row("Ghar Jaisa Thali")?.isHighProtein === true && row("Burger")?.isHighProtein === false);
+
+  // 33. Kitchen can correct a dish's nutrition; customers cannot.
+  const metaPatch = await fetch(base + "/api/v1/menu-state/Burger", { method: "PATCH", headers: { "Content-Type": "application/json", ...as("chef1") }, body: JSON.stringify({ nutritionPerServing: { proteinG: 20 } }) });
+  const metaJ = await metaPatch.json();
+  check("manager updates nutrition -> Burger now high protein", metaPatch.status === 200 && metaJ.data?.nutritionPerServing?.proteinG === 20 && metaJ.data?.isHighProtein === true, JSON.stringify(metaJ.data));
+  const metaDeny = await fetch(base + "/api/v1/menu-state/Burger", { method: "PATCH", headers: { "Content-Type": "application/json", ...as("customer1") }, body: JSON.stringify({ nutritionPerServing: { proteinG: 1 } }) });
+  check("customer nutrition update -> 403", metaDeny.status === 403, `got ${metaDeny.status}`);
+
   server.close();
   await mongod.stop();
   console.log(`\n${passed} passed, ${failed} failed`);

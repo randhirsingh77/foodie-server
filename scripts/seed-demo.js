@@ -16,7 +16,7 @@ const DRIVERS = [
   { sub: "seed-driver-3", name: "Imran Sheikh", vehicle: "Bajaj Pulsar · DL 7C 2210", img: 53 },
 ];
 
-const MENU = { Burger: 40, Pasta: 250, Lasagna: 200, Pizza: 120, Biryani: 180, Juice: 50, Sandwich: 25, Chocolate: 30 };
+const MENU = { Burger: 40, Pasta: 250, Lasagna: 200, Pizza: 120, Biryani: 180, Juice: 50, Sandwich: 25, Chocolate: 30, "Ghar Jaisa Thali": 130 };
 const CUSTOMERS = ["Aarav", "Priya", "Karan", "Sneha", "Vikram", "Ananya", "Rohit", "Meera"];
 
 function makeOrder(i, daysAgo, status) {
