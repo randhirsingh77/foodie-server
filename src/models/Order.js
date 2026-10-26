@@ -69,6 +69,8 @@ const orderSchema = new mongoose.Schema(
     // order keeps the whole-rupee convention; splits are stored in paise
     // explicitly so shares always add up exactly).
     groupCartId: { type: String, default: "" },
+    // Set on orders materialised by a tiffin subscription's daily run.
+    subscriptionId: { type: String, default: "" },
     splits: [
       {
         sub: { type: String, default: "" },

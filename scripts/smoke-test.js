@@ -295,6 +295,51 @@ function check(name, cond, extra = "") {
   for (let i = 0; i < 11; i++) lastJoin = (await post("/api/v1/group-carts/ZZZZZZ/join", {}, bearer(guest.token))).status;
   check("11th join attempt on one code -> 429", lastJoin === 429, `got ${lastJoin}`);
 
+  // ---- Tiffin subscriptions (meal credits) ----
+  // 40. Plans are public, priced as approved, with the policy in plain text.
+  const planRes = await (await get("/api/v1/subscriptions/plans")).json();
+  const weekly = planRes.data?.plans?.find((p) => p.id === "weekly");
+  const monthly = planRes.data?.plans?.find((p) => p.id === "monthly");
+  check("tiffin plans: weekly 6/699, monthly 24/2499, policy shown", weekly?.meals === 6 && weekly?.price === 699 && monthly?.meals === 24 && monthly?.price === 2499 && /not refunded/.test(planRes.data?.policy || ""), JSON.stringify(planRes.data?.plans));
+
+  // 41. Subscribe (meal credits, not a wallet) -> 6 credits, 7-day window.
+  const subRes = await post("/api/v1/subscriptions", { planId: "weekly", address: "Room 12, Sunrise PG, New Delhi", paymentMethod: "UPI" }, bearer(host.token));
+  const sub = (await subRes.json()).data;
+  const dayKey = (k, n) => { const d = new Date(`${k}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  check("subscribed: 6 credits, window start+6", subRes.status === 201 && sub?.mealsTotal === 6 && sub?.mealsLeft === 6 && sub?.endDate === dayKey(sub.startDate, 6), `got ${subRes.status} ${JSON.stringify(sub)}`);
+
+  // 42. Skip a day 2+ days out: allowed, plan extends by a day.
+  const skipDate = dayKey(sub.startDate, 2);
+  const skipRes = await post(`/api/v1/subscriptions/${sub.id}/skip`, { date: skipDate }, bearer(host.token));
+  const skipJ = await skipRes.json();
+  check("skip extends the plan by a day", skipRes.status === 200 && skipJ.data?.skippedDates?.includes(skipDate) && skipJ.data?.endDate === dayKey(sub.startDate, 7), `got ${skipRes.status} ${JSON.stringify(skipJ.data?.skippedDates)}`);
+
+  // 43. Skipping today (a plan that starts today) is past the cut-off.
+  const todayKey = new Date(Date.now() + (5 * 60 + 30) * 60000).toISOString().slice(0, 10);
+  const sub2Res = await post("/api/v1/subscriptions", { planId: "weekly", address: "Room 9, Sunrise PG, New Delhi", startDate: todayKey }, bearer(guest.token));
+  const sub2 = (await sub2Res.json()).data;
+  const lateSkip = await post(`/api/v1/subscriptions/${sub2.id}/skip`, { date: todayKey }, bearer(guest.token));
+  check("skip today -> 409 past cut-off", lateSkip.status === 409, `got ${lateSkip.status}`);
+
+  // 44. The daily job needs the admin key, materialises one thali order,
+  //     and is idempotent for the same date.
+  const noKey = await post("/api/v1/admin/run-tiffin-orders", { date: sub.startDate });
+  check("tiffin run without admin key -> 401", noKey.status === 401, `got ${noKey.status}`);
+  const run1 = await (await post("/api/v1/admin/run-tiffin-orders", { date: sub.startDate }, { "x-admin-key": "test-admin-key" })).json();
+  check("tiffin run creates an order per due subscription (2)", run1.data?.created === 2, JSON.stringify(run1.data));
+  const run2 = await (await post("/api/v1/admin/run-tiffin-orders", { date: sub.startDate }, { "x-admin-key": "test-admin-key" })).json();
+  check("tiffin run again same day -> 0 new (idempotent)", run2.data?.created === 0, JSON.stringify(run2.data));
+  const mySubs = await (await get("/api/v1/subscriptions/mine", bearer(host.token))).json();
+  check("one credit used after the run", mySubs.data?.[0]?.mealsUsed === 1 && mySubs.data?.[0]?.mealsLeft === 5, JSON.stringify(mySubs.data?.[0]));
+  const myOrds = await (await get("/api/v1/orders/mine", bearer(host.token))).json();
+  check("materialised order is a thali order on the subscription", myOrds.data?.some((o) => o.subscriptionId === sub.id && o.items?.[0]?.name === "Ghar Jaisa Thali"));
+
+  // 45. Pause + resume round-trip.
+  const pauseRes = await post(`/api/v1/subscriptions/${sub.id}/pause`, { days: 2 }, bearer(host.token));
+  check("pause -> paused", pauseRes.status === 200 && (await pauseRes.json()).data?.status === "paused", `got ${pauseRes.status}`);
+  const resumeRes = await post(`/api/v1/subscriptions/${sub.id}/resume`, {}, bearer(host.token));
+  check("resume -> active", resumeRes.status === 200 && (await resumeRes.json()).data?.status === "active", `got ${resumeRes.status}`);
+
   server.close();
   await mongod.stop();
   console.log(`\n${passed} passed, ${failed} failed`);

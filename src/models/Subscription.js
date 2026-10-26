@@ -29,6 +29,7 @@ const subscriptionSchema = new mongoose.Schema(
       default: "active",
       index: true,
     },
+    pausedFrom: { type: String, default: "" }, // IST day key, when paused
     pausedUntil: { type: String, default: "" }, // IST day key, when paused
     skippedDates: [{ type: String }],
     ledger: [
