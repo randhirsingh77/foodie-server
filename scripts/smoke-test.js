@@ -236,6 +236,14 @@ function check(name, cond, extra = "") {
   const metaDeny = await fetch(base + "/api/v1/menu-state/Burger", { method: "PATCH", headers: { "Content-Type": "application/json", ...as("customer1") }, body: JSON.stringify({ nutritionPerServing: { proteinG: 1 } }) });
   check("customer nutrition update -> 403", metaDeny.status === 403, `got ${metaDeny.status}`);
 
+  // ---- Queue-aware ETA ----
+  // 34. A fresh order still with the kitchen reports a queue-based range
+  //     with the reason, alongside the legacy etaMinutes field.
+  const trk = await (await get("/api/v1/orders/FD-TEST02/track")).json();
+  check("track: queue ETA range + reason for a kitchen order", trk.data?.etaLow >= 5 && trk.data?.etaHigh > trk.data?.etaLow && typeof trk.data?.etaReason === "string" && trk.data.etaReason.includes("live kitchen queue"), JSON.stringify(trk.data));
+  check("track: queueAhead + avgPrepMinutes are numbers", typeof trk.data?.queueAhead === "number" && typeof trk.data?.avgPrepMinutes === "number");
+  check("track: delivered order keeps etaMinutes 0 and no queue range", tr.data?.etaMinutes === 0);
+
   server.close();
   await mongod.stop();
   console.log(`\n${passed} passed, ${failed} failed`);

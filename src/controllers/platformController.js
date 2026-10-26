@@ -130,6 +130,10 @@ async function trackOrder(req, res) {
     etaMinutes = 0;
   }
 
+  // Queue-aware estimate while the order is still with the kitchen.
+  const { queueEta } = require("../utils/eta");
+  const queue = await queueEta(Order, order);
+
   let driver = null;
   if (order.driverSub) {
     const p = await UserProfile.findOne({ sub: order.driverSub });
@@ -152,6 +156,11 @@ async function trackOrder(req, res) {
       destination: dest,
       rider,
       etaMinutes,
+      etaLow: queue ? queue.etaLow : null,
+      etaHigh: queue ? queue.etaHigh : null,
+      queueAhead: queue ? queue.queueAhead : null,
+      avgPrepMinutes: queue ? queue.avgPrepMinutes : null,
+      etaReason: queue ? queue.etaReason : null,
       driver,
       rating: order.rating?.stars ? order.rating : null,
     },
