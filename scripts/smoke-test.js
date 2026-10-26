@@ -340,6 +340,44 @@ function check(name, cond, extra = "") {
   const resumeRes = await post(`/api/v1/subscriptions/${sub.id}/resume`, {}, bearer(host.token));
   check("resume -> active", resumeRes.status === 200 && (await resumeRes.json()).data?.status === "active", `got ${resumeRes.status}`);
 
+  // ---- One-click demo access ----
+  // 46. Before seeding, demo-login answers 503 (not a crash).
+  const unseeded = await post("/api/v1/auth/demo-login", { role: "customer" });
+  check("demo-login before seed -> 503", unseeded.status === 503, `got ${unseeded.status}`);
+
+  // 47. The reseed endpoint needs the admin key and creates the accounts.
+  const reseedNoKey = await post("/api/v1/admin/reseed-demo", {});
+  check("reseed without admin key -> 401", reseedNoKey.status === 401, `got ${reseedNoKey.status}`);
+  const reseed = await post("/api/v1/admin/reseed-demo", {}, { "x-admin-key": "test-admin-key" });
+  const reseedJ = await reseed.json();
+  check("reseed creates 3 demo accounts", reseed.status === 200 && reseedJ.data?.accounts?.length === 3, `got ${reseed.status}`);
+
+  // 48. Demo-login issues a working JWT for a flagged demo profile.
+  const dl = await post("/api/v1/auth/demo-login", { role: "customer" });
+  const dlJ = await dl.json();
+  check("demo-login customer -> token + demo flag", dl.status === 200 && typeof dlJ.data?.token === "string" && dlJ.data?.profile?.demo === true && dlJ.data?.profile?.role === "customer", `got ${dl.status}`);
+  const demoToken = dlJ.data?.token;
+  const dlBad = await post("/api/v1/auth/demo-login", { role: "owner" });
+  check("demo-login bad role -> 400", dlBad.status === 400, `got ${dlBad.status}`);
+
+  // 49. The demo accounts are also login-able with the published password.
+  const dlPw = await post("/api/v1/auth/login", { id: "demo.customer@foodie.example", password: "<redacted>" });
+  check("demo account password login works", dlPw.status === 200, `got ${dlPw.status}`);
+
+  // 50. demoGuard: demo users cannot change the password or delete an
+  //     address, but the JWT itself works.
+  const cpDemo = await post("/api/v1/auth/change-password", { currentPassword: "demo1234", newPassword: "whatever123" }, bearer(demoToken));
+  check("demo change-password -> 403", cpDemo.status === 403, `got ${cpDemo.status}`);
+  const demoMe = await (await get("/api/v1/profile", bearer(demoToken))).json();
+  const addrId = demoMe.data?.addresses?.[0]?._id;
+  const delAddr = await fetch(base + `/api/v1/profile/addresses/${addrId}`, { method: "DELETE", headers: bearer(demoToken) });
+  check("demo delete address -> 403", delAddr.status === 403, `got ${delAddr.status}`);
+
+  // 51. Demo logins are rate-limited to 5 per IP per hour (1 used above).
+  let lastDl = 0;
+  for (let i = 0; i < 5; i++) lastDl = (await post("/api/v1/auth/demo-login", { role: "manager" })).status;
+  check("6th demo-login within the hour -> 429", lastDl === 429, `got ${lastDl}`);
+
   server.close();
   await mongod.stop();
   console.log(`\n${passed} passed, ${failed} failed`);

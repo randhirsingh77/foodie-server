@@ -72,6 +72,27 @@ async function login(req, res) {
   res.json({ data: { token: signToken(profile), profile: publicProfile(profile) } });
 }
 
+// POST /auth/demo-login { role } — one-click login as a seeded demo
+// account (customer / manager / driver) for portfolio visitors. Issues a
+// normal JWT for the demo profile; demoGuard keeps demo accounts away
+// from destructive actions. Rate-limited to 5 logins per IP per hour so
+// the public endpoint cannot be hammered.
+async function demoLogin(req, res) {
+  const { hit, rateLimited } = require("../utils/rateLimit");
+  const role = String(req.body?.role || "");
+  if (!["customer", "manager", "driver"].includes(role)) {
+    return bad(res, "400", "role must be customer, manager or driver.");
+  }
+  if (!hit(`demo-login:${req.ip}`, 5, 3600 * 1000)) return rateLimited(res);
+  const profile = await UserProfile.findOne({ sub: `demo-${role}`, demo: true });
+  if (!profile) {
+    return res.status(503).json({
+      error: { code: "demo_not_seeded", message: "Demo accounts are not set up yet — run the seed or the nightly reset." },
+    });
+  }
+  res.json({ data: { token: signToken(profile), profile: publicProfile(profile) } });
+}
+
 // POST /auth/forgot { email } — demo-grade: answers generically. A real
 // deployment emails a signed reset link; the token machinery is the same
 // JWT used here (short expiry, single purpose).
@@ -163,4 +184,4 @@ async function googleCallback(req, res) {
   }
 }
 
-module.exports = { register, login, forgot, changePassword, googleStart, googleCallback };
+module.exports = { register, login, demoLogin, forgot, changePassword, googleStart, googleCallback };

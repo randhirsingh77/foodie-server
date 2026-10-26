@@ -75,6 +75,13 @@ function makeOrder(i, daysAgo, status) {
     });
   }
 
+  // Login-able demo accounts (demo-customer / demo-manager / demo-driver)
+  // for one-click demo access; also refreshed nightly via
+  // POST /api/v1/admin/reseed-demo.
+  const { ensureDemoData } = require("../src/utils/demoData");
+  await ensureDemoData();
+  console.log("Seeded demo login accounts (password: the published demo password).");
+
   const plan = [
     [0, "delivered"], [0, "delivered"], [1, "delivered"], [1, "on_the_way"], [2, "delivered"],
     [2, "packing"], [3, "delivered"], [3, "preparing"], [4, "delivered"], [5, "received"],

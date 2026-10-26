@@ -20,6 +20,10 @@ const userProfileSchema = new mongoose.Schema(
     name: { type: String, default: "", trim: true },
     phone: { type: String, default: "", trim: true },
     picture: { type: String, default: "" },
+    // Seeded demo account (one-click demo login from the portfolio).
+    // Demo accounts are throwaway, publicly documented, write-guarded by
+    // demoGuard, and reset nightly — never a real person's account.
+    demo: { type: Boolean, default: false },
     // Own auth system: bcrypt hash (never selected by default) + provider.
     passwordHash: { type: String, select: false },
     authProvider: { type: String, enum: ["local", "google"], default: "local" },
