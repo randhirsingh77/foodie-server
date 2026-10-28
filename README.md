@@ -1,6 +1,6 @@
 # Foodie Server — platform backend
 
-The backend for the [Foodie website](https://github.com/randhirsingh77/Food-Delivery)
+The backend I built for the [Foodie website](https://github.com/randhirsingh77/Food-Delivery)
 (live: https://foodie-tvna.onrender.com). It runs the whole platform:
 its **own auth system** (register/login with email or phone + password,
 bcrypt, JWT; Continue with Google), user profiles with roles
