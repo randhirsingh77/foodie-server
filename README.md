@@ -78,7 +78,6 @@ header — production should verify the Auth0 JWT; see identify.js.)
 | `POST /api/v1/profile/addresses` · `DELETE /api/v1/profile/addresses/:id` | user | Saved addresses |
 | `GET /api/v1/profile/by-role?role=driver` | user | Directory (kitchen assigns drivers from this) |
 | `PUT /api/v1/profile/role` | admin | Set another user's role by email/sub |
-| `POST /api/v1/profile/demo-role` | user | **Demo only:** switch your own role to try every view with one login |
 | `GET /api/v1/orders/mine` | user | My orders |
 | `GET /api/v1/orders/queue` | manager/admin/driver | Working queue (drivers see ready-for-pickup + their own) |
 | `POST /api/v1/orders/:id/accept` | driver | Take an unassigned packing order |
