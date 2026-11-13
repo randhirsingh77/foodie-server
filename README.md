@@ -44,6 +44,11 @@ foodie-server/
 | `PORT` | Port to listen on (the host sets this in production). |
 | `ADMIN_KEY` | Long random key required in the `x-admin-key` header for the order-management endpoints. |
 | `CORS_ORIGIN` | The website origin allowed to call the API. |
+| `JWT_SECRET` | Secret used to sign the login tokens (JWT, valid 7 days). **Secret** — choose a long random value. |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID for Continue with Google. |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret. **Secret** — choose it from Google Cloud Console, never commit it. |
+| `SITE_URL` | The live website URL — Google login returns the browser here (default `https://randhirsingh77.github.io/Food-Delivery/`). |
+| `GOOGLE_REDIRECT_URI` | Optional override for the Google OAuth callback URL (default is `<server host>/api/v1/auth/google/callback`). |
 
 ## API
 
